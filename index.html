@@ -2,55 +2,115 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Calculadora de Sueldo en Tiempo Real</title>
+    <title>Calculadora de Sueldo</title>
     <style>
         body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #1e1e1e; color: white; margin: 0; }
-        .card { background: #2d2d2d; padding: 2rem 4rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); text-align: center; }
-        .money { font-size: 4rem; font-weight: bold; color: #4ade80; font-variant-numeric: tabular-nums; }
-        h2 { margin-top: 0; color: #a1a1aa; font-weight: normal; }
+        .card { background: #2d2d2d; padding: 2rem 3rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); text-align: left; }
+        .row { margin-bottom: 1.5rem; }
+        h2 { margin: 0 0 0.5rem 0; color: #a1a1aa; font-weight: normal; font-size: 1.2rem; }
+        .money { font-size: 2.5rem; font-weight: bold; color: #4ade80; font-variant-numeric: tabular-nums; }
+        .info { font-size: 0.9rem; color: #fbbf24; margin-top: 1rem; text-align: center;}
     </style>
 </head>
 <body>
     <div class="card">
-        <h2>Ganado hoy</h2>
-        <div class="money" id="daily">0.0000 €</div>
+        <div class="row">
+            <h2>Hoy</h2>
+            <div class="money" id="daily">0.0000 €</div>
+        </div>
+        <div class="row">
+            <h2>Esta Semana</h2>
+            <div class="money" id="weekly">0.0000 €</div>
+        </div>
+        <div class="row">
+            <h2>Este Mes</h2>
+            <div class="money" id="monthly">0.0000 €</div>
+        </div>
+        <div class="info" id="payday">Próximo cobro: Calculando...</div>
     </div>
 
     <script>
-        // Sueldo: 1300€/mes -> 15600€/año -> ~7.5€/hora -> 0.00208333€/segundo
-        const RATE_PER_SEC = 7.5 / 3600;
+        const RATE_PER_HOUR = 8.125;
+        const RATE_PER_SEC = RATE_PER_HOUR / 3600;
+        const DAILY_EARNINGS = RATE_PER_HOUR * 8; // 65 € al día
+
+        function isWorkingDay(date) {
+            const day = date.getDay();
+            return day >= 1 && day <= 5;
+        }
+
+        function countWorkingDays(start, end) {
+            let count = 0;
+            let current = new Date(start);
+            current.setHours(0,0,0,0);
+            const endDate = new Date(end);
+            endDate.setHours(0,0,0,0);
+
+            while (current < endDate) {
+                if (isWorkingDay(current)) count++;
+                current.setDate(current.getDate() + 1);
+            }
+            return count;
+        }
+
+        function getFirstFriday(year, month) {
+            let d = new Date(year, month, 1);
+            while (d.getDay() !== 5) d.setDate(d.getDate() + 1);
+            return d;
+        }
 
         function updateEarnings() {
             const now = new Date();
-            const day = now.getDay();
-            let earned = 0;
-
-            // Solo de Lunes (1) a Viernes (5)
-            if (day >= 1 && day <= 5) {
+            
+            // 1. Calcular ganado hoy en tiempo real
+            let earnedToday = 0;
+            if (isWorkingDay(now)) {
                 const timeInSeconds = now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
-
                 const start1 = 8 * 3600 + 15 * 60; // 08:15
                 const end1 = 14 * 3600;            // 14:00
                 const start2 = 15 * 3600;          // 15:00
                 const end2 = 17 * 3600 + 15 * 60;  // 17:15
-
                 const morningSeconds = end1 - start1;
 
                 if (timeInSeconds > start1 && timeInSeconds <= end1) {
-                    earned = (timeInSeconds - start1) * RATE_PER_SEC; // Mañana
+                    earnedToday = (timeInSeconds - start1) * RATE_PER_SEC;
                 } else if (timeInSeconds > end1 && timeInSeconds <= start2) {
-                    earned = morningSeconds * RATE_PER_SEC; // Descanso
+                    earnedToday = morningSeconds * RATE_PER_SEC;
                 } else if (timeInSeconds > start2 && timeInSeconds <= end2) {
-                    earned = (morningSeconds + (timeInSeconds - start2)) * RATE_PER_SEC; // Tarde
+                    earnedToday = (morningSeconds + (timeInSeconds - start2)) * RATE_PER_SEC;
                 } else if (timeInSeconds > end2) {
-                    earned = (morningSeconds + (end2 - start2)) * RATE_PER_SEC; // Fin del día
+                    earnedToday = (morningSeconds + (end2 - start2)) * RATE_PER_SEC;
                 }
             }
+
+            // 2. Acumulado Semanal (Lunes a Hoy)
+            const startOfWeek = new Date(now);
+            const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay(); 
+            startOfWeek.setDate(now.getDate() - (dayOfWeek - 1));
+            const pastDaysWeek = countWorkingDays(startOfWeek, now);
+            const earnedWeek = (pastDaysWeek * DAILY_EARNINGS) + earnedToday;
+
+            // 3. Acumulado Mensual (Día 1 a Hoy)
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const pastDaysMonth = countWorkingDays(startOfMonth, now);
+            const earnedMonth = (pastDaysMonth * DAILY_EARNINGS) + earnedToday;
+
+            // 4. Próximo día de cobro
+            let payday = getFirstFriday(now.getFullYear(), now.getMonth());
+            if (now > payday && now.getDate() !== payday.getDate()) {
+                payday = getFirstFriday(now.getFullYear(), now.getMonth() + 1);
+            }
+
+            // Actualizar UI
+            document.getElementById('daily').innerText = earnedToday.toFixed(4) + ' €';
+            document.getElementById('weekly').innerText = earnedWeek.toFixed(4) + ' €';
+            document.getElementById('monthly').innerText = earnedMonth.toFixed(4) + ' €';
             
-            document.getElementById('daily').innerText = earned.toFixed(4) + ' €';
+            const options = { weekday: 'long', day: 'numeric', month: 'long' };
+            document.getElementById('payday').innerText = 'Día de cobro: ' + payday.toLocaleDateString('es-ES', options);
         }
 
-        setInterval(updateEarnings, 100); // Actualiza cada 100ms para un efecto fluido
+        setInterval(updateEarnings, 100);
         updateEarnings();
     </script>
 </body>
